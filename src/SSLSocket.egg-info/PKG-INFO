@@ -1,0 +1,51 @@
+Metadata-Version: 2.1
+Name: SSLSocket
+Version: 0.0.0.1
+Summary: Add self-cert to a http website
+Home-page: https://github.com/KhanhNguyen9872/SSLSocket
+Download-URL: https://github.com/KhanhNguyen9872/SSLSocket
+Author: KhanhNguyen9872
+Author-email: KhanhNguyen9872 <khanhvuinguyenvan800983609@gmail.com>
+License: BSD-3-Clause
+Project-URL: Documentation, https://github.com/KhanhNguyen9872/SSLSocket#readme
+Project-URL: Issue Tracker, https://github.com/KhanhNguyen9872/SSLSocket/issues
+Project-URL: Source Code, https://github.com/KhanhNguyen9872/SSLSocket
+Keywords: SSLSocket
+Platform: any
+Classifier: License :: OSI Approved :: MIT License
+Requires-Python: >=3.6
+Description-Content-Type: text/markdown
+Requires-Dist: pyOpenSSL
+Provides-Extra: tests
+Requires-Dist: pytest; extra == "tests"
+Requires-Dist: pytest-cov; extra == "tests"
+
+# SSLSocket
+Add self-cert to a http website
+
+# Installation
+```bash
+pip install SSLSocket
+```
+
+# Usage
+1. You must have a http website like `http://localhost`, `http://127.0.0.1` or something else
+2. Install this library
+3. Using this code
+```python3
+import SSLSocket
+
+# Install self-cert into system
+SSLSocket.installCert()
+
+# Replace <DOMAIN> to another domain you want, (ex: SSLSocket.com)
+server = SSLSocket.Server(<DOMAIN>)  
+
+# Replace IP and PORT with your http website, (ex: IP is '127.0.0.1', and Port is '80')
+server.setServer(<IP>, <PORT>)
+
+# Start server 
+server.start()
+
+# Now you can browse your domain with SSL (ex: https://SSLSocket.com)
+```

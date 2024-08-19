@@ -1,0 +1,5 @@
+pyOpenSSL
+
+[tests]
+pytest
+pytest-cov

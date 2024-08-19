@@ -1,0 +1,16 @@
+MANIFEST.in
+README.md
+pyproject.toml
+setup.cfg
+src/SSLSocket/__init__.py
+src/SSLSocket/exceptions.py
+src/SSLSocket/utils.py
+src/SSLSocket.egg-info/PKG-INFO
+src/SSLSocket.egg-info/SOURCES.txt
+src/SSLSocket.egg-info/dependency_links.txt
+src/SSLSocket.egg-info/not-zip-safe
+src/SSLSocket.egg-info/requires.txt
+src/SSLSocket.egg-info/top_level.txt
+src/SSLSocket/cert/rootCA.crt
+src/SSLSocket/cert/rootCA.key
+src/SSLSocket/cert/rootCA.pem
