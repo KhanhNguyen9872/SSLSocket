@@ -23,8 +23,8 @@ def isWindows() -> bool:
 def isLinux() -> bool:
     return (os.name == 'posix') and (shutil.which("bash") != "/data/data/com.termux/files/usr/bin/bash")
 
-if not isWindows() and not isLinux():
-    raise DeviceNotSupported("only support Windows and Linux!")
+def isTermux() -> bool:
+    return (os.name == 'posix') and (shutil.which("bash") == "/data/data/com.termux/files/usr/bin/bash")
 
 if isWindows():
     from ctypes import windll
@@ -37,12 +37,14 @@ if isWindows():
         raise PermissionDenied("SSLSocket need administrator permission!")
 
     hostsFile = r"C:\Windows\System32\drivers\etc\hosts"
-
-if isLinux():
+elif isLinux() or isTermux():
     if subprocess.getoutput("whoami") != "root":
         raise PermissionDenied("SSLSocket need root permission!")
+
     hostsFile = "/etc/hosts"
-    
+else:
+    raise DeviceNotSupported("only support Windows and Linux!")
+
 certPath = "./cert"
 rootCAPath = "/".join("/".join(__file__.split("\\")).split("/")[:-1]) + "/cert"
 rootCAPass = "12345678"
@@ -52,41 +54,49 @@ def installCert(path = rootCAPath + "/rootCA.crt") -> None:
     if isWindows():
         output = subprocess.getoutput("certutil.exe -addstore root {} 2>&1".format(path))
         if "completed successfully." in output:
-            print("> certificate installed!")
+            print(">> certificate installed!")
         elif "The requested operation requires elevation." in output:
             raise CannotInstall("install cert requires administrator permission!")
     elif isLinux():
         fileName = "SSLSocket.crt"
         cerPath = "/usr/share/ca-certificates"
         if Path("{}/{}".format(cerPath, fileName)).is_file():
-            print("> certificate installed!")
+            print(">> certificate installed!")
         else:
             if os.system("cp {} {}/{} >/dev/null 2>&1".format(path, cerPath, fileName)) == 0:
                 os.system("chmod 644 {}/{} >/dev/null 2>&1".format(cerPath, fileName))
                 if (os.system("dpkg-reconfigure ca-certificates >/dev/null 2>&1") == 0):
                     if (os.system("update-ca-certificates >/dev/null 2>&1") == 0):
-                        print("> certificate installed!")
+                        print(">> certificate installed!")
                     else:
                         raise CannotInstall("cannot update certificate in system")
                 else:
                     raise CannotInstall("cannot reconfigure certificate in system")
             else:
                 raise CannotInstall("cannot copy certificate to system")
+    elif isTermux():
+        fileName = "SSLSocket.crt"
+        cerPath = "/sdcard"
+        if (os.system("cp {} {}/{}".format(path, cerPath, fileName)) == 0):
+            print("! certificate cannot automatic install in Termux, you must manually install this cert [{}/{}] to your device!".format(cerPath, fileName))
+        else:
+            raise CannotInstall("cannot copy certificate to {}, maybe you need grant permission to Termux first!".format(cerPath))
     else:
         raise DeviceNotSupported("can't install certificate due to device unsupported")
 
-    print("> if install cert not working, you must install this file [{}] into browser or anything".format(path))
+    if isWindows() or isLinux():
+        print("> if install cert not working, you must install this file [{}] into browser or anything".format(path))
     return
 
 def addHost(domain):
-    if (isDomain(domain)):
+    if (isDomain(domain) and (not isTermux())):
         data = open(hostsFile, 'rb').read()
         if not "\n127.0.0.1 \t {}\n".format(domain).encode('utf8') in data:
             open(hostsFile, "wb").write(data + '\n127.0.0.1 \t {}\n'.format(domain).encode('utf8'))
     return
 
 def delHost(domain):
-    if (isDomain(domain)):
+    if (isDomain(domain) and (not isTermux())):
         data = open(hostsFile, 'rb').read()
         if "\n127.0.0.1 \t {}\n".format(domain).encode('utf8') in data:
             data_ = b""
@@ -205,14 +215,14 @@ class Server:
         try:
             string = " "
             while string:
-                string = sock_client.recv(8192)
+                string = sock_client.recv(1024)
                 if string:
                     sock_dest.sendall(string)
                 else:
                     sock_client.shutdown(socket.SHUT_RD)
                     sock_dest.shutdown(socket.SHUT_WR)
         except Exception as e:
-            print(str(e))
+            print("! " + str(e))
         
         try:
             sock_client.shutdown(socket.SHUT_RD)
@@ -246,7 +256,7 @@ class Server:
             sock.sendall(http_response)
             sock.close()
         except Exception as e:
-            print(str(e))
+            print("! " + str(e))
         return
     
     def __getConnection(self, server_socket, isHTTP = False):
@@ -254,15 +264,15 @@ class Server:
         while True:
             try:
                 client_socket, addr = server_socket.accept()
-                print(f"Connected from [{addr[0]}:{addr[1]}]")
+                print(f"@ Connected from [{addr[0]}:{addr[1]}]")
                 
                 if isHTTP:
-                    print(f"Redirect to https [{addr[0]}:{addr[1]}]")
+                    print(f"@ Redirect to https [{addr[0]}:{addr[1]}]")
                     Thread(target=self.__sendRedirect, args=(client_socket, )).start()
                 else:
                     Thread(target=self.__prepareForward, args=(client_socket, )).start()
             except Exception as e:
-                print(str(e))
+                print("! " + str(e))
 
     def start(self):
         if self.isRunning():
@@ -283,16 +293,19 @@ class Server:
         except OSError as e:
             if "Address already in use" in str(e) or "Only one usage of each socket address" in str(e) or "An attempt was made to access a socket in a way forbidden by its access permissions" in str(e):
                 raise CannotBindPort("Port 80 or 443 is already in use by another program or don't have permission to open port!")
-            print(e)
+            elif "Permission denied" in str(e):
+                raise PermissionDenied("Need root permission!")
+            else:
+                raise e
         
         server_socket_http.listen()
         server_socket_https.listen()
-        print("> Server started [80/443]")
+        print(">> Server started [80/443]")
         
         # setup domain (hosts)
         print("> Setting up [{}]....".format(self.__domain))
         addHost(self.__domain)
-        print("> Successfully [{}]".format(self.__domain))
+        print(">> Successfully [{}]".format(self.__domain))
 
         thread_http = Thread(target=self.__getConnection, args=(server_socket_http, True, ))
         thread_https = Thread(target=self.__getConnection, args=(server_socket_https, ))
