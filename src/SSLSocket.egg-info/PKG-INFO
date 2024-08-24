@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: SSLSocket
-Version: 0.0.0.3
+Version: 0.0.0.4
 Summary: Add self-cert to a http website
 Home-page: https://github.com/KhanhNguyen9872/SSLSocket
 Download-URL: https://github.com/KhanhNguyen9872/SSLSocket

@@ -172,7 +172,7 @@ class Server:
             crt = OpenSSL.crypto.X509()
             crt.set_serial_number(1)
             crt.gmtime_adj_notBefore(0)
-            crt.gmtime_adj_notAfter(60*60*24*365*10)  # Valid for 10 years
+            crt.gmtime_adj_notAfter(60*60*24*365*1)  # Valid for 1 years
             crt.set_issuer(rootCAPem.get_subject())
             crt.set_subject(csr.get_subject())
             
@@ -207,7 +207,7 @@ class Server:
                 certfile=self.__sslCrt,
                 server_side=True,
                 ssl_version=ssl.PROTOCOL_SSLv23,
-                ciphers='DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA:ECDHE-ECDSA-AES128-GCM-SHA256'
+                ciphers='ALL:!aNULL:!eNULL'
             )
         return server_socket
 
