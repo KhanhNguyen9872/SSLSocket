@@ -271,7 +271,6 @@ class Server:
     def __prepareForward(self, sock_client):
         sock_dest = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock_dest.connect((self.__remoteHost, int(self.__remotePort)))
-        print(sock_dest)
         Thread(target=self.__forward, args=(sock_client, sock_dest, )).start()
         Thread(target=self.__forward, args=(sock_dest, sock_client, )).start()
         return
