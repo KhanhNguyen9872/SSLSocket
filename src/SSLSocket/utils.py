@@ -269,8 +269,14 @@ class Server:
         return
 
     def __prepareForward(self, sock_client):
-        sock_dest = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock_dest.connect((self.__remoteHost, int(self.__remotePort)))
+        try:
+            sock_dest = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock_dest.connect((self.__remoteHost, int(self.__remotePort)))
+        except Exception as e:
+            log.write("# E: __prepareForward: " + str(e))
+            sock_client.close()
+            return
+        
         Thread(target=self.__forward, args=(sock_client, sock_dest, )).start()
         Thread(target=self.__forward, args=(sock_dest, sock_client, )).start()
         return
