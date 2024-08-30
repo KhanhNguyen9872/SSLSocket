@@ -1,4 +1,4 @@
-import os, sys, shutil
+import os, sys, shutil, time
 from .exceptions import *
 
 def installModule(moduleName):
@@ -16,6 +16,41 @@ except ModuleNotFoundError:
 from pathlib import Path
 from threading import Thread
 import ssl, socket, subprocess
+
+class Log:
+    def __init__(self):
+        self.output = sys.stdout
+        self.disableE = False
+        return
+
+    def setOutput(self, output):
+        if (output == None):
+            self.output = output
+            return
+        
+        if (str(type(output)) == "<class '_io.TextIOWrapper'>"):
+            if (output.mode == 'w'):
+                self.output = output
+            else:
+                raise UnknownOutput("mode output must is 'w'! Found " + output.mode)
+        else:
+            raise UnknownOutput("output not supported! Found " + str(type(output)))
+        return
+
+    def disableError(self, isDisable):
+        self.disableE = isDisable
+        return
+    
+    def write(self, text):
+        if (self.output != None):
+            if (self.disableE) and ("#" == text[0]):
+                return
+            
+            self.output.write(text + "\n")
+            self.output.flush()
+        return
+
+log = Log()
 
 def isWindows() -> bool:
     return os.name == 'nt'
@@ -50,24 +85,24 @@ rootCAPath = "/".join("/".join(__file__.split("\\")).split("/")[:-1]) + "/cert"
 rootCAPass = "12345678"
 
 def installCert(path = rootCAPath + "/rootCA.crt") -> None:
-    print("> installing certificate....")
+    log.write("> installing certificate....")
     if isWindows():
         output = subprocess.getoutput("certutil.exe -addstore root {} 2>&1".format(path))
         if "completed successfully." in output:
-            print(">> certificate installed!")
+            log.write(">> certificate installed!")
         elif "The requested operation requires elevation." in output:
             raise CannotInstall("install cert requires administrator permission!")
     elif isLinux():
         fileName = "SSLSocket.crt"
         cerPath = "/usr/share/ca-certificates"
         if Path("{}/{}".format(cerPath, fileName)).is_file():
-            print(">> certificate installed!")
+            log.write(">> certificate installed!")
         else:
             if os.system("cp {} {}/{} >/dev/null 2>&1".format(path, cerPath, fileName)) == 0:
                 os.system("chmod 644 {}/{} >/dev/null 2>&1".format(cerPath, fileName))
                 if (os.system("dpkg-reconfigure ca-certificates >/dev/null 2>&1") == 0):
                     if (os.system("update-ca-certificates >/dev/null 2>&1") == 0):
-                        print(">> certificate installed!")
+                        log.write(">> certificate installed!")
                     else:
                         raise CannotInstall("cannot update certificate in system")
                 else:
@@ -78,14 +113,14 @@ def installCert(path = rootCAPath + "/rootCA.crt") -> None:
         fileName = "SSLSocket.crt"
         cerPath = "/sdcard"
         if (os.system("cp {} {}/{}".format(path, cerPath, fileName)) == 0):
-            print("! certificate cannot automatic install in Termux, you must manually install this cert [{}/{}] to your device!".format(cerPath, fileName))
+            log.write("! certificate cannot automatic install in Termux, you must manually install this cert [{}/{}] to your device!".format(cerPath, fileName))
         else:
             raise CannotInstall("cannot copy certificate to {}, maybe you need grant permission to Termux first!".format(cerPath))
     else:
         raise DeviceNotSupported("can't install certificate due to device unsupported")
 
     if isWindows() or isLinux():
-        print("> if install cert not working, you must install this file [{}] into browser or anything".format(path))
+        log.write("> if install cert not working, you must install this file [{}] into browser or anything".format(path))
     return
 
 def addHost(domain):
@@ -218,15 +253,16 @@ class Server:
                 string = sock_client.recv(1024)
                 if string:
                     sock_dest.sendall(string)
-                else:
-                    sock_client.shutdown(socket.SHUT_RD)
-                    sock_dest.shutdown(socket.SHUT_WR)
         except Exception as e:
-            print("! " + str(e))
+            log.write("# E: __forward: " + str(e))
         
         try:
-            sock_client.shutdown(socket.SHUT_RD)
-            sock_dest.shutdown(socket.SHUT_WR)
+            sock_client.close()
+        except:
+            return
+
+        try:
+            sock_dest.close()
         except:
             return
         
@@ -235,16 +271,19 @@ class Server:
     def __prepareForward(self, sock_client):
         sock_dest = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock_dest.connect((self.__remoteHost, int(self.__remotePort)))
+        print(sock_dest)
         Thread(target=self.__forward, args=(sock_client, sock_dest, )).start()
         Thread(target=self.__forward, args=(sock_dest, sock_client, )).start()
         return
     
     def __sendRedirect(self, sock):
         try:
-            url = self.__domain
-            data = sock.recv(8192)
+            url = self.__domain + ("" if self.https_port == 443 else (":" + str(self.https_port)))
+            data = sock.recv(65535)
+            
             if data:
-                url = url + data.split(b' ')[1].decode('utf8')
+                path = data.split(b' ')[1].decode('utf8')
+                url = url + path
             
             http_response = (
                 "HTTP/1.1 301 Moved Permanently\r\n"
@@ -256,7 +295,7 @@ class Server:
             sock.sendall(http_response)
             sock.close()
         except Exception as e:
-            print("! " + str(e))
+            log.write("# E: __sendRedirect: " + str(e))
         return
     
     def __getConnection(self, server_socket, isHTTP = False):
@@ -264,35 +303,42 @@ class Server:
         while True:
             try:
                 client_socket, addr = server_socket.accept()
-                print(f"@ Connected from [{addr[0]}:{addr[1]}]")
+                log.write(f"@ Connected from [{addr[0]}:{addr[1]}]")
                 
                 if isHTTP:
-                    print(f"@ Redirect to https [{addr[0]}:{addr[1]}]")
+                    log.write(f"@ Redirect to https [{addr[0]}:{addr[1]}]")
                     Thread(target=self.__sendRedirect, args=(client_socket, )).start()
                 else:
                     Thread(target=self.__prepareForward, args=(client_socket, )).start()
+            except ssl.SSLError as e:
+                log.write("# E: __getConnection: client request http:// in https server")
             except Exception as e:
-                print("! " + str(e))
+                log.write("# E: __getConnection: " + str(e))
 
-    def start(self):
+    def start(self,
+            http_port: int = 80,
+            https_port: int = 443,
+            delay: float = 0.0,
+            force_https: bool = True
+        ) -> None:
         if self.isRunning():
             raise AlreadyRunning("server already running [{}]".format(self.__domain))
         
         # prepare SSL
-        print("> Preparing SSLServer....")
+        log.write("> Preparing SSLServer....")
         self.__prepareSSL()
         
         # Server
-        print("> Starting server [80/443]....")
+        log.write("> Starting server [http: {} - https: {}]....".format(http_port, https_port))
         server_socket_http = self.__createSocket(False)
-        server_socket_https = self.__createSocket()
+        server_socket_https = self.__createSocket(True if force_https else False)
         
         try:
-            server_socket_http.bind(("127.0.0.1", 80))
-            server_socket_https.bind(("127.0.0.1", 443))
+            server_socket_http.bind(("0.0.0.0", http_port))
+            server_socket_https.bind(("0.0.0.0", https_port))
         except OSError as e:
             if "Address already in use" in str(e) or "Only one usage of each socket address" in str(e) or "An attempt was made to access a socket in a way forbidden by its access permissions" in str(e):
-                raise CannotBindPort("Port 80 or 443 is already in use by another program or don't have permission to open port!")
+                raise CannotBindPort("Port {} or {} is already in use by another program or don't have permission to open port!".format(http_port, https_port))
             elif "Permission denied" in str(e):
                 raise PermissionDenied("Need root permission!")
             else:
@@ -300,24 +346,41 @@ class Server:
         
         server_socket_http.listen()
         server_socket_https.listen()
-        print(">> Server started [80/443]")
+        self.http_port = http_port
+        self.https_port = https_port
+        log.write(">> Server started [http: {} - https: {}]".format(http_port, https_port))
         
         # setup domain (hosts)
-        print("> Setting up [{}]....".format(self.__domain))
+        log.write("> Setting up [{}]....".format(self.__domain))
         addHost(self.__domain)
-        print(">> Successfully [{}]".format(self.__domain))
+        log.write(">> Successfully [{}]".format(self.__domain))
 
-        thread_http = Thread(target=self.__getConnection, args=(server_socket_http, True, ))
-        thread_https = Thread(target=self.__getConnection, args=(server_socket_https, ))
+        self.thread_http = Thread(target=self.__getConnection, args=(server_socket_http, force_https, ))
+        self.thread_https = Thread(target=self.__getConnection, args=(server_socket_https, ))
         
-        thread_http.start()
-        thread_https.start()
+        if (delay > 0):
+            Thread(target=self.__delay_start, args=(delay, )).start()
+            return
         
-        print("> Now you can browse [https://{}]".format(self.__domain))
+        self.__start()
         return
 
+    def __delay_start(self, delay):
+        log.write("> Delay start ({} sec)".format(delay))
+        time.sleep(delay)
+        self.__start()
+        return
+    
+    def __start(self):
+        self.thread_http.start()
+        self.thread_https.start()
+        
+        log.write("> Now you can browse [https://{}]".format(self.__domain))
+        return
+    
     def removeDomain(self):
         delHost(self.__domain)
+        return
         
     def isRunning(self) -> bool:
         if self.__isStart:
